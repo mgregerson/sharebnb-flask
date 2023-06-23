@@ -340,14 +340,13 @@ class Message(db.Model):
 
     def serialize(self):
         """Serialize to dictionary."""
-
+        formatted_timestamp = self.timestamp.strftime('%I:%M %p, %B %dth, %Y')
         return {
             "id": self.id,
-            "content": self.content,
-            "timestamp": self.timestamp.isoformat(),
-            "conversation_id": self.conversation_id,
-            "sender_username": self.sender_username,
-            "recipient_username": self.recipient_username
+            "content": self.content,  # Updated attribute name
+            "sender": self.sender.username,
+            "receiver": self.recipient.username,  # Updated attribute name
+            "timestamp": formatted_timestamp
         }
 
     

@@ -4,8 +4,8 @@ from werkzeug.exceptions import Unauthorized
 from flask_debugtoolbar import DebugToolbarExtension
 import os
 from dotenv import load_dotenv
-from models import db, connect_db, User, Rental, Reservation
-from sqlalchemy import and_
+from models import db, connect_db, User, Rental, Reservation, Message, Conversation
+from sqlalchemy import and_, or_
 from helpers import create_jwt
 import base64
 from io import BytesIO
@@ -242,12 +242,170 @@ def get_user_reservation(username, reservation_id):
 
     return jsonify(reservation=serialized)
 
+@app.post('/reservations/<username>/add')
+def add_reservation(username):
+    """Allows a user to add a new reservation"""
 
+    reservation_data = request.get_json()
 
+    start_date = reservation_data['start_date']
+    end_date = reservation_data['end_date']
+    rental_id = reservation_data['rental_id']
+    rating = reservation_data.get('rating')
 
+    if rating is not None:
+        # Rating is provided
+        reservation = Reservation.add_reservation(start_date=start_date, end_date=end_date, rental_id=rental_id, renter=username, rating=rating)
+    else:
+        # Rating is not provided
+        reservation = Reservation.add_reservation(start_date=start_date, end_date=end_date, rental_id=rental_id, renter=username)
 
-# TODO: Work on Messages
-# /messages/username (All their messages)
-# /messages/username/int:message-id (A single message)
+    db.session.commit()
+
+    serialized = reservation.serialize()
+
+    return jsonify(reservation=serialized)
+
+##############################################################################
+# Messages routes:
+
+@app.get('/messages/<username>')
+def get_user_messages(username):
+    """Returns JSON data of all messages for a single user"""
+
+    user = User.query.get_or_404(username)
+
+    sent_messages = Message.query.filter_by(sender=user).all()
+    received_messages = Message.query.filter_by(recipient=user).all()
+
+    serialized = [message.serialize() for message in sent_messages] + [message.serialize() for message in received_messages]
+
+    return jsonify(messages=serialized)
+
+@app.get('/messages/<username>/<int:message_id>')
+def get_user_message(username, message_id):
+    """Returns JSON data of a single user's message"""
+
+    message = Message.query.filter_by(sender=username, id=message_id).first()
+
+    if not message:
+        return jsonify(message=None)
+
+    serialized = message.serialize()
+
+    return jsonify(message=serialized)
+
+@app.post('/messages')
+def send_message():
+    data = request.get_json()
+
+    if 'sender' not in data or 'recipient' not in data or 'content' not in data:
+        return jsonify(message='Missing required fields'), 400
+
+    sender_username = data['sender']
+    receiver_username = data['recipient']
+    message_text = data['content']
+
+    sender = User.query.filter_by(username=sender_username).first()
+    recipient = User.query.filter_by(username=receiver_username).first()
+
+    if not sender or not recipient:
+        return jsonify(message='Sender or receiver not found'), 404
+
+    conversation = Conversation.query.filter(
+        or_(
+            and_(Conversation.user1 == sender, Conversation.user2 == recipient),
+            and_(Conversation.user1 == recipient, Conversation.user2 == sender)
+        )
+    ).first()
+
+    if not conversation:
+        conversation = Conversation(user1=sender, user2=recipient)
+        db.session.add(conversation)
+
+    message = Message(content=message_text, sender=sender, recipient=recipient, conversation=conversation)
+    db.session.add(message)
+    db.session.commit()
+
+    messages = Message.query.filter_by(conversation=conversation).order_by(Message.timestamp).all()
+
+    # Serialize messages to dictionary format
+    serialized_messages = [msg.serialize() for msg in messages]
+
+    return jsonify(conversation=serialized_messages), 200
+
+##############################################################################
+# Conversations routes:
+
+@app.post('/conversations')
+def create_conversation():
+    """Create a conversation between two users"""
+
+    conversation_data = request.get_json()
+    user1_username = conversation_data['user1']
+    user2_username = conversation_data['user2']
+
+    # Check if a conversation already exists between the users
+    existing_conversation = Conversation.query.filter(
+        Conversation.user1.has(username=user1_username),
+        Conversation.user2.has(username=user2_username)
+    ).first()
+
+    if existing_conversation is not None:
+        return jsonify(error='Conversation already exists')
+
+    # Create new conversation
+    user1 = User.query.filter_by(username=user1_username).first()
+    user2 = User.query.filter_by(username=user2_username).first()
+
+    if user1 is None or user2 is None:
+        return jsonify(error='Invalid user')
+
+    conversation = Conversation(user1=user1, user2=user2)
+    db.session.add(conversation)
+    db.session.commit()
+
+    return jsonify(conversation=conversation.serialize())
+
+@app.get('/conversations/<username>')
+def get_user_conversations(username):
+    """Returns JSON data of all conversations for a single user"""
+
+    user = User.query.get_or_404(username)
+
+    conversations = Conversation.query.filter(or_(Conversation.user1 == user, Conversation.user2 == user)).all()
+
+    serialized = [conversation.serialize() for conversation in conversations]
+
+    return jsonify(conversations=serialized)
+
+@app.get('/conversations/<int:conversation_id>/messages')
+def get_conversation_messages_by_id(conversation_id):
+    """Returns JSON data of all messages in a single conversation"""
+
+    conversation = Conversation.query.get_or_404(conversation_id)
+
+    messages = conversation.messages
+    messages.sort(key=lambda m: m.timestamp)  # Sort messages by timestamp
+
+    serialized = [message.serialize() for message in messages]
+
+    return jsonify(messages=serialized)
+
+@app.get('/conversations/<sender>/<recipient>/messages')
+def get_conversation_messages_by_users(sender, recipient):
+    """Returns JSON data of all messages in a conversation between the sender and recipient"""
+
+    conversation = Conversation.query.filter(
+        Conversation.user1.has(username=sender) & Conversation.user2.has(username=recipient)
+    ).first()
+
+    if not conversation:
+        return jsonify(messages=[])
+
+    messages = conversation.messages
+    serialized_messages = [message.serialize() for message in messages]
+
+    return jsonify(messages=serialized_messages)
 
 
