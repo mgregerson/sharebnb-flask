@@ -2,6 +2,17 @@
 
 This is the backend application for Sharebnb, a platform for sharing and booking rentals. It is built using Flask, a Python web framework.
 
+## Technologies Used
+
+- Flask
+- Python
+- HTML
+- CSS
+- JavaScript
+- PostgreSQL
+- SQLAlchemy
+- Amazon S3 (for photo storage)
+
 ## Installation
 
 1. Clone the repository:
@@ -18,12 +29,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Set up the environment variables:
+3. Set up the environment variables.
+  
+- Before running the application, make sure to set up the following environment variables in your `.env` file:
 
-- Create a `.env` file in the root directory and add the following variables:
+- **SECRET_KEY**: Your secret key for Flask application security.
+- **DATABASE_URL**: The URL or connection string for your database.
+- **BUCKET_NAME**: The name of your Amazon S3 bucket where rental photos will be stored.
+- **AWS_ACCESS_KEY_ID**: Your Amazon S3 access key ID.
+- **AWS_SECRET_ACCESS_KEY**: Your Amazon S3 secret access key.
 
-SECRET_KEY=<your-secret-key>
-DATABASE_URL=<your-database-url>
+Note: You will need to have your own Amazon S3 account and bucket set up to store the rental photos. Make sure to replace the placeholders with your actual credentials and bucket name.
 
 4. Run the application:
 
